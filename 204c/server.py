@@ -1,99 +1,59 @@
 import socket
-from  threading import Thread
-import time, random
+from threading import Thread
+import random
 
 SERVER = None
-IP_ADDRESS = '127.0.0.1'
 PORT = 8000
-
-CLIENTS = {}
-flashNumberList =[ i  for i in range(1, 91)]
-
-playersJoined = False
+IP_ADDRESS = '127.0.0.1'
+clients = {}
 
 
+def broadcast(message):
+    for client in clients:
+        client.send(message.encode())
 
-def handleClient():
-    global CLIENTS
-    global flashNumberList
-    global playersJoined
+
+def client_thread(client):
+    client.send('name'.encode())
+    name = client.recv(2048).decode()
+    clients[client] = name
+    print(f"Player {name} connected.")
 
     while True:
         try:
-            # Atleast two player required to play this game
-            if(len(list(CLIENTS.keys())) >=2):
-                if(not playersJoined):
-                    playersJoined = True
-                    time.sleep(1)
-
-
-                if(len(flashNumberList) > 0):
-                    randomNumber = random.choice(flashNumberList)
-                    currentName = None
-                    try:
-                        for cName in CLIENTS:
-                            currentName = cName
-                            cSocket = CLIENTS[cName]["player_socket"]
-                            cSocket.send(str(randomNumber).encode())
-
-                        flashNumberList.remove(int(randomNumber))
-                    except:
-                        # Removing Player cleint when they close / terminate the session
-                        del CLIENTS[currentName]
-
-                    # After Every 3 Seconds we are sending one number to each CLIENT
-                    time.sleep(3)
-
+            message = client.recv(2048).decode()
+            if message:
+                print(f"Broadcasting number: {message}")
+                broadcast(message)
+            else:
+                remove(client)
         except:
-            pass
+            continue
 
 
+def remove(client):
+    if client in clients:
+        name = clients[client]
+        broadcast(f"Player {name} left the game.")
+        print(f"Player {name} left the game.")
+        del clients[client]
 
 
-def acceptConnections():
-    global CLIENTS
+def start_game():
     global SERVER
-
-    while True:
-        player_socket, addr = SERVER.accept()
-        player_name = player_socket.recv(1024).decode().strip()
-
-        CLIENTS[player_name] = {}
-        CLIENTS[player_name]["player_socket"] = player_socket
-        CLIENTS[player_name]["address"] = addr
-        CLIENTS[player_name]["player_name"] = player_name
-
-        print(f"Connection established with {player_name} : {addr}")
-
-
-
-
-
-def setup():
-    print("\n\t\t\t\t\t*** Welcome To Tambola Game ***\n")
-
-
-    global SERVER
-    global PORT
-    global IP_ADDRESS
-
-
     SERVER = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     SERVER.bind((IP_ADDRESS, PORT))
+    SERVER.listen(100)
 
-    SERVER.listen(10)
+    print("Server started!")
 
-    print("\t\t\t\tSERVER IS WAITING FOR INCOMMING CONNECTIONS...\n")
+    while True:
+        client, address = SERVER.accept()
+        print(f"Connected with {str(address)}")
 
-    thread = Thread(target = handleClient, args=())
-    thread.start()
+        client.send("name".encode())
 
-
-    acceptConnections()
-
-
-setup()
+        Thread(target=client_thread, args=(client,)).start()
 
 
-# Storing Client data
-# Sending Random numbers to CLIENT
+start_game()
